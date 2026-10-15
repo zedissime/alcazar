@@ -27,6 +27,7 @@ so it is started with `sudo alcazar start`.
 ```
 cp alcazar.example.toml alcazar.toml   # gitignored: keep secrets here, not in git
 alcazar setup --config alcazar.toml    # one-time: registers /etc/resolver/<suffix> (sudo)
+                                       # and remembers this config path for every command
 ```
 
 Trust the CA that signed your `tls_cert`:
@@ -74,7 +75,7 @@ sudo chown root:wheel $(which alcazar) && sudo chmod u+s $(which alcazar)
 ```
 
 Reapply after every reinstall. This is a real security trade-off on a shared
-machine; see `CLAUDE.md`.
+machine; see `AGENTS.md`.
 
 ## Dashboard
 

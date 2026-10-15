@@ -1,168 +1,48 @@
-# Example alcazar.toml, translated from ~/Dev/scripts/myapp.config.js
-# and ~/Dev/scripts/traefik.cfg/ig.yml.
-#
-# Paths are relative to this file's directory, same as the pm2/traefik configs
-# they replace (both live in ~/Dev/scripts).
-
-[dns]
-suffix = "test"
-listen = "127.0.0.1:53"
+# Paths are relative to this file; `~` is expanded.
 
 [proxy]
-listen = "0.0.0.0:443"
 tls_cert = "ssl/myapp.test.crt"
 tls_key = "ssl/myapp.test.key"
 
-# Web dashboard: process list, live colorized logs, start/stop/restart,
-# "add a service" form. Both fields below are optional (these are the
-# defaults) — set enabled = false to turn it off.
-[dashboard]
-enabled = true
-listen = "127.0.0.1:7777"
+# Shared by every process; a process's own `env` wins.
+[env]
+NODE_EXTRA_CA_CERTS = "ssl/devCA.pem"
 
-# Applied to every process, underneath each [[process]]'s own `env` (a
-# process's own value for a key wins on conflict). Handy for things shared
-# by several services, e.g. the CA cert path used by both compiler
-# and gateway below.
-# [env]
-# NODE_EXTRA_CA_CERTS = "ssl/devCA.pem"
-
-# `port` is optional and purely informational — shown in `alcazar list` and
-# the dashboard, not enforced or used for routing (routes below declare
-# their own target independently). Leave it out for a process with no fixed
-# port (e.g. sidekiq, a background worker).
 [[process]]
-name = "back"
-cwd = "../myapp-back"
-command = 'export RBENV_VERSION=`cat .ruby-version`; eval "$(rbenv init -)"; infisical run -- bundle exec rails s -p 3011'
+name = "api"
+cwd = "../myapp-api"
+command = "bundle exec rails s -p 3011"
 port = 3011
 
 [[process]]
-name = "sidekiq"
-cwd = "../myapp-back"
-command = 'export RBENV_VERSION=`cat .ruby-version`; eval "$(rbenv init -)"; infisical run -- bundle exec sidekiq --config config/sidekiq.yml -c 1'
-
-# `autostart` is optional and defaults to `true`. Set it to `false` for a
-# service you only want to run occasionally (e.g. a one-off worker, a
-# staging mirror, a rarely-used admin tool): `alcazar start` will skip
-# spawning it (it still shows up in `alcazar list`/the dashboard as
-# "stopped"), and you bring it up on demand with `alcazar start <name>` or
-# `alcazar restart <name>`.
-# [[process]]
-# name = "admin-tool"
-# cwd = "../admin-tool"
-# command = "yarn start"
-# autostart = false
-
-# `command` itself is optional — omit it for an accessory that's only ever
-# deployed remotely via Kamal (e.g. one of ~/Dev/infra/accessories) and
-# isn't meant to run locally at all. alcazar never spawns or controls it
-# (no start/stop/restart), but it still shows up in the dashboard with a
-# "reboot" sub-row per deploy destination found in its `config/deploy*.yml`
-# (`kamal app boot [-d <env>]`) and Kamal log tabs, next to everything else.
-# [[process]]
-# name = "registry"
-# cwd = "~/Dev/infra/accessories/registry"
+name = "worker"
+cwd = "../myapp-api"
+command = "bundle exec sidekiq"
 
 [[process]]
-name = "central-storage"
-cwd = "../central-storage"
-command = 'export RBENV_VERSION=`cat .ruby-version`; eval "$(rbenv init -)"; infisical run -- bundle exec rails s -p 3012'
-port = 3012
-
-[[process]]
-name = "compiler"
-cwd = "../compiler"
-command = "lsof -i :5683 | awk '$1 == \"node\" {print $2}' | while read pid; do kill -9 $pid; done; infisical run -- yarn dev"
-env = { NODE_EXTRA_CA_CERTS = "../scripts/ssl/devCA.pem", PREFIX = "" }
-port = 5683
-
-[[process]]
-name = "front"
-cwd = "../myapp-front"
-command = "infisical run -- yarn dev"
+name = "web"
+cwd = "../myapp-web"
+command = "yarn dev"
+env = { PORT = "3010" }
 port = 3010
 
+# Registered but not started; run it with `alcazar start admin`.
 [[process]]
-name = "gateway"
-cwd = "../gateway"
-command = "lsof -i :5678 | awk '$1 == \"node\" {print $2}' | while read pid; do kill -9 $pid; done; infisical run -- yarn dev"
-env = { NODE_EXTRA_CA_CERTS = "../scripts/ssl/devCA.pem", PREFIX = "" }
-port = 5678
+name = "admin"
+cwd = "../myapp-admin"
+command = "yarn start"
+autostart = false
 
+# No `command`: a Kamal-only accessory (logs and reboot in the dashboard).
 [[process]]
-name = "worker"
-cwd = "../worker"
-command = "yarn dev"
-env = { NODE_EXTRA_CA_CERTS = "../scripts/ssl/devCA.pem", PREFIX = "" }
-
-[[process]]
-name = "tools"
-cwd = "../tools"
-command = "yarn dev"
-env = { PORT = "1234" }
-port = 1234
-
-[[process]]
-name = "docs"
-cwd = "../ig-json-form/documentation"
-command = "lsof -i :3008 | awk '$1 == \"node\" {print $2}' | while read pid; do kill -9 $pid; done; yarn start"
-env = { PORT = "3008" }
-port = 3008
-
-[[process]]
-name = "archive"
-cwd = "../archive"
-command = "yarn dev"
-
-[[process]]
-name = "dispatcher"
-cwd = "../dispatcher"
-command = "yarn dev"
-
-# --- routes (replaces traefik.cfg/ig.yml) ---
+name = "registry"
+cwd = "~/infra/accessories/registry"
 
 [[route]]
 host = "api.myapp.test"
 target = "http://localhost:3011"
 priority = 20
 
-[[route]]
-host = "gateway.myapp.test"
-target = "http://localhost:5678"
-priority = 20
-
-[[route]]
-host = "publicapi.myapp.test"
-target = "http://localhost:5678"
-priority = 20
-
-[[route]]
-host = "cs.myapp.test"
-target = "http://localhost:3012"
-priority = 20
-
-[[route]]
-host = "tools.myapp.test"
-target = "http://localhost:1234"
-priority = 20
-
-[[route]]
-host = "docs.myapp.test"
-target = "http://localhost:3008"
-priority = 20
-
-[[route]]
-host = "archive.myapp.test"
-target = "http://localhost:3007"
-priority = 20
-
-[[route]]
-host = "dispatcher.myapp.test"
-target = "http://localhost:3007"
-priority = 20
-
-# Catch-all: any other *.myapp.test goes to the front dev server.
 [[route]]
 host_regex = '.+\.myapp\.test'
 target = "http://localhost:3010"

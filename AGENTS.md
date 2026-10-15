@@ -329,3 +329,12 @@ Three things worth knowing if you touch the integration between the two:
    `menubar` flag and calls the same `open_menubar` as `start -m`/`restart -m`
    (same sudo/setuid user-drop, same single-instance-lock caveat from point 2)
    instead of `open_in_browser`. It never starts or touches the daemon.
+
+## Config path resolution
+
+`resolve_config` (`src/main.rs`) applies only to the *default* `--config
+alcazar.toml`: if it isn't in the current directory, it falls back to the
+absolute path `alcazar setup` wrote to `~/.alcazar/config`. An explicit
+`--config` is never overridden. The saved value is a path, not a symlink or
+copy, on purpose: relative `cwd`/`tls_*` entries resolve against the config
+file's own directory, which a symlink under `~/.alcazar/` would break.

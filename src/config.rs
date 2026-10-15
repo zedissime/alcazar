@@ -575,8 +575,8 @@ mod tests {
     fn example_config_parses_and_validates() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("alcazar.example.toml");
         let config = Config::load(&path).unwrap();
-        assert_eq!(config.processes.len(), 11);
-        assert_eq!(config.routes.len(), 9);
+        assert_eq!(config.processes.len(), 5);
+        assert_eq!(config.routes.len(), 2);
     }
 
     #[test]

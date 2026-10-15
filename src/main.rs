@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Start { name: None, config, foreground, open, menubar } => {
-            cmd_start(config, foreground, open, menubar, &socket_path).await
+            cmd_start(resolve_config(config), foreground, open, menubar, &socket_path).await
         }
         Commands::DaemonChild { config: config_path } => {
             let config = Config::load(&config_path)?;
@@ -150,13 +150,13 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Restart { name: None, config, foreground, open, menubar } => {
-            cmd_restart_all(config, foreground, open, menubar, &socket_path).await
+            cmd_restart_all(resolve_config(config), foreground, open, menubar, &socket_path).await
         }
         Commands::List => cmd_list(&socket_path).await,
-        Commands::Open { config, menubar } => cmd_open(config, menubar, &socket_path).await,
+        Commands::Open { config, menubar } => cmd_open(resolve_config(config), menubar, &socket_path).await,
         Commands::Logs { name, lines } => cmd_logs(name, lines, &socket_path).await,
-        Commands::ClearLogs { name, config } => cmd_clear_logs(name, config),
-        Commands::Setup { config } => cmd_setup(config),
+        Commands::ClearLogs { name, config } => cmd_clear_logs(name, resolve_config(config)),
+        Commands::Setup { config } => cmd_setup(resolve_config(config)),
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "alcazar", &mut std::io::stdout());
             Ok(())
@@ -514,7 +514,7 @@ async fn cmd_restart_all(
         println!("alcazar: daemon wasn't running, starting fresh");
     }
 
-    cmd_start(config, foreground, open, menubar, socket_path).await
+    cmd_start(resolve_config(config), foreground, open, menubar, socket_path).await
 }
 
 /// Opens the dashboard in the default browser without touching the daemon —
@@ -638,8 +638,32 @@ fn cmd_clear_logs(name: Option<String>, config_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+fn saved_config_path() -> PathBuf {
+    config::dirs_home().join(".alcazar").join("config")
+}
+
+/// A default `alcazar.toml` that isn't in the current directory falls back
+/// to the path recorded by `alcazar setup`. An explicit `--config` is
+/// never overridden.
+fn resolve_config(path: PathBuf) -> PathBuf {
+    if path != Path::new("alcazar.toml") || path.exists() {
+        return path;
+    }
+    match std::fs::read_to_string(saved_config_path()) {
+        Ok(saved) => PathBuf::from(saved.trim()),
+        Err(_) => path,
+    }
+}
+
 fn cmd_setup(config_path: PathBuf) -> Result<()> {
     let config = Config::load(&config_path)?;
+    let abs_path = config_path.canonicalize()?;
+    let saved = saved_config_path();
+    if let Some(dir) = saved.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&saved, abs_path.to_string_lossy().as_bytes())
+        .with_context(|| format!("writing {}", saved.display()))?;
     let suffix = config.dns.suffix.trim_matches('.').to_string();
     let resolver_dir = PathBuf::from("/etc/resolver");
     let resolver_file = resolver_dir.join(&suffix);

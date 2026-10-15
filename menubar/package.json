@@ -1,0 +1,13 @@
+{
+  "name": "alcazar-menubar",
+  "version": "0.1.0",
+  "description": "macOS menu bar launcher for the alcazar dashboard, with pinnable always-on-top log windows",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

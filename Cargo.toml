@@ -1,0 +1,26 @@
+[package]
+name = "alcazar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.104"
+bytes = "1.12.1"
+clap = { version = "4.6.6", features = ["derive"] }
+clap_complete = "4.6.1"
+hickory-proto = "0.26.2"
+http-body-util = "0.1.5"
+hyper = { version = "1.11.1", features = ["full"] }
+hyper-util = { version = "0.1.20", features = ["full"] }
+libc = "0.2.189"
+regex = "1.13.1"
+rustls-pemfile = "2.2.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "process", "io-util", "macros", "signal", "fs", "time", "sync", "net"] }
+tokio-rustls = "0.26.4"
+tokio-stream = "0.1.19"
+toml = "1.1.5"
+toml_edit = "0.25.13"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"

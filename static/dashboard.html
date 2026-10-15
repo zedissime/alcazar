@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>alcazar</title>
+<style>
+  :root {
+    --bg: #1e1e2a;
+    --bg-panel: #262635;
+    --bg-elevated: #2e2e40;
+    --border: #3a3a4d;
+    --text: #d8d8e0;
+    --text-dim: #8a8a9a;
+    --accent: #7aa2f7;
+    --green: #9ece6a;
+    --red: #f7768e;
+    --yellow: #e0af68;
+    --gray: #6b6b7d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  header h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  header .actions { display: flex; gap: 8px; }
+  button {
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #10121c; border-color: var(--accent); font-weight: 600; }
+  button.danger:hover { border-color: var(--red); }
+  button.small { padding: 3px 8px; font-size: 12px; }
+  main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: var(--bg-panel); }
+  tr.row.selected { background: var(--bg-elevated); }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge.online { background: rgba(158,206,106,0.15); color: var(--green); }
+  .badge.crashed { background: rgba(247,118,142,0.15); color: var(--red); }
+  .badge.stopped { background: rgba(107,107,125,0.2); color: var(--gray); }
+  .badge.starting { background: rgba(224,175,104,0.15); color: var(--yellow); }
+  .cmd { color: var(--text-dim); font-size: 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-actions { display: flex; gap: 6px; align-items: center; }
+  .empty { color: var(--text-dim); padding: 20px; text-align: center; }
+  tr.kamal-row td { padding: 4px 10px 4px 30px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+  .kamal-env-label { color: var(--text-dim); font-size: 12px; }
+  .kamal-boot-msg { font-size: 12px; margin-left: 8px; }
+  .kamal-boot-msg.ok { color: var(--green); }
+  .kamal-boot-msg.err { color: var(--red); }
+
+  .panel-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 28px 0 10px; gap: 10px; }
+  .panel-title-row h2 { font-size: 14px; margin: 0; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .panel-title-row .section-hint { font-size: 12px; color: var(--text-dim); }
+
+  /* Kamal-only accessories table: clearly a different shape (no
+     pid/port/uptime/restarts/command — none of that applies to something
+     alcazar never runs locally), and tinted so the section itself, not just
+     each row, reads as distinct from the local-process table above it. */
+  #kamalSection { background: rgba(122,162,247,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 4px 14px 14px; }
+  #kamalSection .panel-title-row { margin-top: 14px; }
+  #kamalSection table { table-layout: fixed; }
+  #kamalSection th:first-child, #kamalSection td:first-child { width: 220px; }
+  #kamalSection th:nth-child(2), #kamalSection td:nth-child(2) { width: 140px; }
+  tr.kamal-accessory-row { cursor: pointer; }
+  tr.kamal-accessory-row:hover { background: var(--bg-elevated); }
+  tr.kamal-accessory-row.selected { background: var(--bg-elevated); }
+  tr.kamal-accessory-row td { border-bottom: 1px solid var(--border); }
+
+  #logBackdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 99;
+  }
+  #logBackdrop.open { display: block; }
+
+  /* Log panel: a slide-over drawer from the right, for any process's logs
+     (local tail or a Kamal remote env) — "fullscreen" widens it to cover
+     the whole viewport instead of opening a second, different layout. */
+  #logPanel {
+    display: none;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 640px;
+    max-width: 94vw;
+    background: #14141d;
+    border-left: 1px solid var(--border);
+    box-shadow: -12px 0 40px rgba(0,0,0,0.45);
+    z-index: 100;
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+  }
+  #logPanel.open { display: flex; transform: translateX(0); }
+  #logPanel.open.fullscreen { width: 100%; max-width: 100%; }
+  #logBody { flex: 1; height: auto; }
+  .log-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .log-toolbar input[type=text] {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 13px;
+    flex: 1;
+  }
+  .log-toolbar label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
+  .log-tabs { display: flex; gap: 4px; padding: 6px 12px 0; }
+  .log-tab {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    color: var(--text-dim);
+    border-radius: 6px 6px 0 0;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .log-tab.active { background: #14141d; color: var(--text); }
+  #logBody {
+    overflow-y: auto;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .logline { padding: 1px 0; }
+  .logline .lvl {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 0 4px;
+    border-radius: 3px;
+    margin-right: 2px;
+  }
+  .logline .lvl-debug { color: var(--gray); background: rgba(107,107,125,0.18); }
+  .logline .lvl-info { color: var(--accent); background: rgba(122,162,247,0.14); }
+  .logline .lvl-warn { color: var(--yellow); background: rgba(224,175,104,0.14); }
+  .logline .lvl-error, .logline .lvl-fatal { color: var(--red); background: rgba(247,118,142,0.14); }
+  .logline .hl-id { color: var(--purple, #bb9af7); }
+  .logline .hl-host { color: var(--text-dim); font-style: italic; }
+  .logline.hl-error { color: var(--red); }
+  .logline.hl-warn { color: var(--yellow); }
+  .logline.hl-meta { color: var(--accent); font-style: italic; }
+  .logline .lineno { color: #45455a; user-select: none; margin-right: 8px; }
+
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    align-items: center; justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: 460px;
+    max-width: 92vw;
+    padding: 20px;
+  }
+  .modal h2 { margin: 0 0 14px; font-size: 15px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .field input {
+    width: 100%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+  .env-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .env-row input { flex: 1; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .form-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⛯ alcazar</h1>
+  <div class="actions">
+    <button id="btnDaemonLog">Daemon log</button>
+    <button id="btnRestartAll">Restart all</button>
+    <button id="btnStopAll" class="danger">Stop all</button>
+    <button id="btnAddService" class="primary">+ Add service</button>
+  </div>
+</header>
+
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>State</th>
+        <th>PID</th>
+        <th>Port</th>
+        <th>Uptime</th>
+        <th>Restarts</th>
+        <th>Command</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="processRows"></tbody>
+  </table>
+  <div id="emptyState" class="empty" style="display:none">No local processes configured yet.</div>
+
+  <div id="kamalSection">
+    <div class="panel-title-row">
+      <h2>Kamal accessories</h2>
+      <span class="section-hint">remote only — alcazar doesn't run these locally, just their logs + reboot</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Environment</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="kamalRows"></tbody>
+    </table>
+    <div id="kamalEmptyState" class="empty" style="display:none">No Kamal-only accessories configured.</div>
+  </div>
+</main>
+
+<div id="logBackdrop"></div>
+<div id="logPanel">
+  <div class="log-toolbar">
+    <strong id="logPanelTitle" class="mono"></strong>
+    <div class="row-actions" id="logPanelActions"></div>
+    <input type="text" id="logFilter" placeholder="filter…" />
+    <label><input type="checkbox" id="logFollow" checked /> follow</label>
+    <button class="small" id="btnFullscreenLog">⤢ fullscreen</button>
+    <button class="small" id="btnCloseLog">close</button>
+  </div>
+  <div class="log-tabs" id="logTabs"></div>
+  <div id="logBody" class="mono"></div>
+</div>
+
+<div class="modal-backdrop" id="addModalBackdrop">
+  <div class="modal">
+    <h2>Add a new service</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="fName" placeholder="my-service" />
+    </div>
+    <div class="field">
+      <label>Working directory (relative to alcazar.toml, optional)</label>
+      <input type="text" id="fCwd" placeholder="../my-service" />
+    </div>
+    <div class="field">
+      <label>Command</label>
+      <input type="text" id="fCommand" placeholder="yarn dev" />
+    </div>
+    <div class="field">
+      <label>Environment variables</label>
+      <div id="envRows"></div>
+      <button class="small" id="btnAddEnvRow" type="button">+ add variable</button>
+    </div>
+    <div class="form-error" id="formError"></div>
+    <div class="modal-actions">
+      <button id="btnCancelAdd">Cancel</button>
+      <button class="primary" id="btnSubmitAdd">Add & start</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const state = { processes: [], selected: null, es: null, logSource: { kind: 'local' } };
+
+function stateBadgeClass(s) {
+  return { online: 'online', crashed: 'crashed', stopped: 'stopped', starting: 'starting' }[s] || 'stopped';
+}
+
+function fmtUptime(secs) {
+  if (secs == null) return '–';
+  if (secs < 60) return secs + 's';
+  if (secs < 3600) return Math.floor(secs / 60) + 'm';
+  return Math.floor(secs / 3600) + 'h' + Math.floor((secs % 3600) / 60) + 'm';
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* no body */ }
+  if (!res.ok) throw new Error((body && body.error) || res.statusText);
+  return body;
+}
+
+async function refreshProcesses() {
+  const list = await api('/api/processes');
+  state.processes = list;
+  renderProcesses();
+  renderKamalRows();
+  if (state.selected) renderLogPanelActions();
+}
+
+// Local processes table — anything with a `command` alcazar actually
+// spawns/controls. Kamal-only accessories (no `command`) live in their own
+// table (renderKamalRows) instead of a row here, so the two are never
+// interleaved or visually confused with each other.
+function renderProcesses() {
+  const rows = document.getElementById('processRows');
+  const empty = document.getElementById('emptyState');
+  const localProcesses = state.processes.filter((p) => p.command != null);
+  rows.innerHTML = '';
+  empty.style.display = localProcesses.length ? 'none' : 'block';
+
+  for (const p of localProcesses) {
+    const tr = document.createElement('tr');
+    tr.className = 'row' + (state.selected === p.name ? ' selected' : '');
+    tr.innerHTML = `
+      <td class="mono">${escapeHtml(p.name)}</td>
+      <td><span class="badge ${stateBadgeClass(p.state)}">${p.state}</span></td>
+      <td class="mono">${p.pid ?? '–'}</td>
+      <td class="mono">${p.port ?? '–'}</td>
+      <td>${fmtUptime(p.uptime_secs)}</td>
+      <td>${p.restarts}</td>
+      <td class="cmd mono" title="${escapeHtml(p.command)}">${escapeHtml(p.command)}</td>
+      <td class="row-actions"></td>
+    `;
+    tr.addEventListener('click', () => openLogPanel(p.name));
+
+    const actions = tr.querySelector('.row-actions');
+    const restartBtn = button('small', p.state === 'stopped' ? 'start' : 'restart', async (ev) => {
+      ev.stopPropagation();
+      await api(`/api/processes/${encodeURIComponent(p.name)}/restart`, { method: 'POST' });
+      refreshProcesses();
+    });
+    const stopBtn = button('small danger', 'stop', async (ev) => {
+      ev.stopPropagation();
+      await api(`/api/processes/${encodeURIComponent(p.name)}/stop`, { method: 'POST' });
+      refreshProcesses();
+    });
+    actions.append(restartBtn, stopBtn);
+    rows.appendChild(tr);
+
+    // A local process can *also* be Kamal-deployed (a `config/deploy.yml`
+    // in its cwd) — keep its per-env reboot sub-rows here, right under it.
+    for (const env of p.kamal_environments) {
+      rows.appendChild(kamalEnvRow(p.name, env));
+    }
+  }
+}
+
+// Sub-row under a local process that's also Kamal-deployed — one per env,
+// with a "reboot" button (`kamal app boot [-d env]`) and a click-through to
+// that env's logs.
+function kamalEnvRow(processName, env) {
+  const tr = document.createElement('tr');
+  tr.className = 'kamal-row';
+  tr.innerHTML = `
+    <td colspan="7"><span class="kamal-env-label mono">↳ ${escapeHtml(env)}</span></td>
+    <td class="row-actions"></td>
+  `;
+  tr.addEventListener('click', () => openLogPanel(processName, { kind: 'remote', env }));
+
+  const actions = tr.querySelector('.row-actions');
+  attachRebootControls(actions, processName, env);
+  return tr;
+}
+
+// Kamal-only accessories table — processes with no `command` at all, one
+// row per deploy destination (most have just one). Deliberately a
+// different, simpler shape than the local table (no pid/port/uptime/
+// restarts/command columns): none of that applies to something alcazar
+// never runs, and reusing the same columns full of "–" is what made this
+// section read as "broken" rather than just different.
+function renderKamalRows() {
+  const rows = document.getElementById('kamalRows');
+  const empty = document.getElementById('kamalEmptyState');
+  const remoteProcesses = state.processes.filter((p) => p.command == null);
+  rows.innerHTML = '';
+  empty.style.display = remoteProcesses.length ? 'none' : 'block';
+
+  for (const p of remoteProcesses) {
+    if (p.kamal_environments.length === 0) {
+      rows.appendChild(kamalAccessoryRow(p.name, null));
+      continue;
+    }
+    for (const env of p.kamal_environments) {
+      rows.appendChild(kamalAccessoryRow(p.name, env));
+    }
+  }
+}
+
+function kamalAccessoryRow(processName, env) {
+  const isSelected = state.selected === processName
+    && state.logSource.kind === 'remote'
+    && state.logSource.env === env;
+  const tr = document.createElement('tr');
+  tr.className = 'kamal-accessory-row' + (isSelected ? ' selected' : '');
+  tr.innerHTML = `
+    <td class="mono">${escapeHtml(processName)}</td>
+    <td class="mono">${env ? escapeHtml(env) : '<span class="kamal-env-label">–</span>'}</td>
+    <td class="row-actions"></td>
+  `;
+
+  const actions = tr.querySelector('.row-actions');
+  if (env) {
+    tr.addEventListener('click', () => openLogPanel(processName, { kind: 'remote', env }));
+    attachRebootControls(actions, processName, env);
+  } else {
+    // cwd isn't a Kamal repo (no config/deploy*.yml) — surfaced instead of
+    // silently dropping the process, since it usually means a typo'd cwd.
+    const note = document.createElement('span');
+    note.className = 'kamal-env-label';
+    note.textContent = 'no config/deploy.yml found';
+    actions.appendChild(note);
+  }
+  return tr;
+}
+
+// Shared "reboot" button + status message, used by both the sub-rows under
+// a local+Kamal process and the Kamal-only accessories table.
+function attachRebootControls(container, processName, env) {
+  const msg = document.createElement('span');
+  msg.className = 'kamal-boot-msg';
+
+  const rebootBtn = button('small', 'reboot', async (ev) => {
+    ev.stopPropagation();
+    // Every reboot this button triggers runs `kamal app boot` against a
+    // remote server, never anything local — always confirm before firing
+    // it, same as "Restart all"/"Stop all" already do.
+    if (!confirm(`Reboot "${processName}" (${env}) via Kamal?\n\nThis restarts the app on its remote server(s) right now.`)) {
+      return;
+    }
+    rebootBtn.disabled = true;
+    msg.className = 'kamal-boot-msg';
+    msg.textContent = 'booting…';
+    try {
+      await api(`/api/processes/${encodeURIComponent(processName)}/kamal/${encodeURIComponent(env)}/boot`, {
+        method: 'POST',
+      });
+      msg.className = 'kamal-boot-msg ok';
+      msg.textContent = 'booted';
+    } catch (e) {
+      msg.className = 'kamal-boot-msg err';
+      msg.textContent = e.message;
+    } finally {
+      rebootBtn.disabled = false;
+    }
+  });
+
+  container.append(rebootBtn, msg);
+}
+
+function button(cls, label, onClick) {
+  const b = document.createElement('button');
+  b.className = cls;
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s ?? '';
+  return div.innerHTML;
+}
+
+// ---- ANSI -> HTML ----
+const ANSI_COLORS = {
+  30: '#45455a', 31: '#f7768e', 32: '#9ece6a', 33: '#e0af68',
+  34: '#7aa2f7', 35: '#bb9af7', 36: '#7dcfff', 37: '#d8d8e0',
+  90: '#6b6b7d', 91: '#f7768e', 92: '#9ece6a', 93: '#e0af68',
+  94: '#7aa2f7', 95: '#bb9af7', 96: '#7dcfff', 97: '#ffffff',
+};
+
+function ansiToHtml(rawEscaped) {
+  let out = '';
+  let open = false;
+  let last = 0;
+  const re = /\x1b\[([0-9;]*)m/g;
+  let m;
+  while ((m = re.exec(rawEscaped))) {
+    out += rawEscaped.slice(last, m.index);
+    last = re.lastIndex;
+    const codes = m[1].split(';').filter(Boolean).map(Number);
+    if (codes.length === 0 || codes.includes(0)) {
+      if (open) { out += '</span>'; open = false; }
+      continue;
+    }
+    for (const code of codes) {
+      if (ANSI_COLORS[code]) {
+        if (open) out += '</span>';
+        out += `<span style="color:${ANSI_COLORS[code]}">`;
+        open = true;
+      }
+    }
+  }
+  out += rawEscaped.slice(last);
+  if (open) out += '</span>';
+  return out;
+}
+
+// Kamal/Rails-style structured tokens on an otherwise plain (no ANSI, no
+// JSON) line: a leading log level ("  INFO [abcd1234] ..."), a hex
+// request/trace id in brackets, and the "on <host>" suffix Kamal appends
+// when a line came from a specific server in a multi-host destination.
+// Operates on already-`escapeHtml`'d text, so patterns are kept to plain
+// ASCII that escaping never touches.
+function highlightPlainLine(escaped) {
+  let out = escaped.replace(/^(\s*)(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL)\b/, (m, ws, lvl) => {
+    const cls = lvl.toLowerCase().replace('warning', 'warn');
+    return `${ws}<span class="lvl lvl-${cls}">${lvl}</span>`;
+  });
+  out = out.replace(/\[([0-9a-f]{6,40})\]/g, '[<span class="hl-id">$1</span>]');
+  out = out.replace(/ on ([\w.-]+\.[\w.-]+)$/, ' on <span class="hl-host">$1</span>');
+  return out;
+}
+
+function renderLogLine(raw) {
+  let text = raw;
+  let jsonPretty = null;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try { jsonPretty = JSON.stringify(JSON.parse(trimmed), null, 2); } catch (e) { /* not json */ }
+  }
+
+  const hasAnsi = /\x1b\[/.test(text);
+  let html;
+  if (jsonPretty) {
+    html = escapeHtml(jsonPretty);
+  } else if (hasAnsi) {
+    html = ansiToHtml(escapeHtml(text));
+  } else {
+    html = highlightPlainLine(escapeHtml(text));
+  }
+
+  let cls = 'logline';
+  if (text.startsWith('[alcazar]')) {
+    cls += /failed to spawn|exited with status|wait\(\) failed/.test(text) ? ' hl-error' : ' hl-meta';
+  } else if (!hasAnsi) {
+    if (/\b(error|exception|fatal)\b/i.test(text)) cls += ' hl-error';
+    else if (/\b(warn|warning)\b/i.test(text)) cls += ' hl-warn';
+  }
+
+  const div = document.createElement('div');
+  div.className = cls;
+  div.innerHTML = html;
+  return div;
+}
+
+// ---- log panel ----
+
+// Opens the slide-over log panel for `name`. `source` picks which log to
+// show right away (e.g. a specific Kamal env clicked directly in the
+// accessories table); when omitted, defaults to "Local" for a process with
+// a `command`, or the first Kamal env for a remote-only one (it has no
+// local log to default to).
+function openLogPanel(name, source) {
+  state.selected = name;
+  if (source) {
+    state.logSource = source;
+  } else {
+    const proc = state.processes.find((p) => p.name === name);
+    const envs = proc ? proc.kamal_environments : [];
+    state.logSource = proc && proc.command == null && envs.length
+      ? { kind: 'remote', env: envs[0] }
+      : { kind: 'local' };
+  }
+  renderProcesses();
+  renderKamalRows();
+
+  document.getElementById('logPanel').classList.add('open');
+  document.getElementById('logBackdrop').classList.add('open');
+  document.getElementById('logPanelTitle').textContent = name;
+
+  renderLogTabs();
+  loadLogSource();
+}
+
+function closeLogPanel() {
+  document.getElementById('logPanel').classList.remove('open', 'fullscreen');
+  document.getElementById('logBackdrop').classList.remove('open');
+  if (state.es) { state.es.close(); state.es = null; }
+  state.selected = null;
+  renderProcesses();
+  renderKamalRows();
+}
+
+// Kamal environment tabs for the currently selected process, alongside
+// "Local" — clicking one switches state.logSource and reloads the panel
+// without closing/reopening it.
+function renderLogTabs() {
+  const tabs = document.getElementById('logTabs');
+  tabs.innerHTML = '';
+  const proc = state.processes.find((p) => p.name === state.selected);
+  const envs = proc ? proc.kamal_environments : [];
+  if (envs.length === 0) return;
+
+  const makeTab = (label, source) => {
+    const isActive = source.kind === 'local'
+      ? state.logSource.kind === 'local'
+      : state.logSource.kind === 'remote' && state.logSource.env === source.env;
+    const b = document.createElement('button');
+    b.className = 'log-tab' + (isActive ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      state.logSource = source;
+      renderLogTabs();
+      loadLogSource();
+    });
+    return b;
+  };
+
+  // A remote-only process (no `command`) has no local log worth a tab.
+  if (proc.command != null) {
+    tabs.appendChild(makeTab('Local', { kind: 'local' }));
+  }
+  for (const env of envs) {
+    tabs.appendChild(makeTab(env, { kind: 'remote', env }));
+  }
+}
+
+// Restart/stop/reboot buttons for whatever state.logSource currently points
+// at, shown right in the log panel's toolbar so acting on what you're
+// watching doesn't mean closing the panel and hunting down the matching
+// table row. Local actions mirror the table row's own buttons exactly (no
+// confirm, same endpoints); a remote (Kamal) source reuses
+// attachRebootControls verbatim, so the "always confirm for remote" rule
+// stays defined in exactly one place.
+function renderLogPanelActions() {
+  const container = document.getElementById('logPanelActions');
+  container.innerHTML = '';
+  const name = state.selected;
+  const proc = state.processes.find((p) => p.name === name);
+  if (!name || !proc) return;
+
+  if (state.logSource.kind === 'local') {
+    const restartBtn = button('small', proc.state === 'stopped' ? 'start' : 'restart', async () => {
+      restartBtn.disabled = true;
+      try {
+        await api(`/api/processes/${encodeURIComponent(name)}/restart`, { method: 'POST' });
+        refreshProcesses();
+      } finally {
+        restartBtn.disabled = false;
+      }
+    });
+    const stopBtn = button('small danger', 'stop', async () => {
+      stopBtn.disabled = true;
+      try {
+        await api(`/api/processes/${encodeURIComponent(name)}/stop`, { method: 'POST' });
+        refreshProcesses();
+      } finally {
+        stopBtn.disabled = false;
+      }
+    });
+    container.append(restartBtn, stopBtn);
+  } else {
+    attachRebootControls(container, name, state.logSource.env);
+  }
+}
+
+// Loads the tail + opens the live stream for whatever state.logSource
+// currently points at (local process log, or a Kamal remote env).
+function loadLogSource() {
+  renderLogPanelActions();
+  const name = state.selected;
+  const body = document.getElementById('logBody');
+  body.innerHTML = '';
+
+  if (state.es) { state.es.close(); state.es = null; }
+
+  const [tailUrl, streamUrl] = state.logSource.kind === 'remote'
+    ? [
+        `/api/logs/${encodeURIComponent(name)}/remote/${encodeURIComponent(state.logSource.env)}?lines=300`,
+        `/api/logs/${encodeURIComponent(name)}/remote/${encodeURIComponent(state.logSource.env)}/stream`,
+      ]
+    : [
+        `/api/logs/${encodeURIComponent(name)}?lines=300`,
+        `/api/logs/${encodeURIComponent(name)}/stream`,
+      ];
+
+  fetch(tailUrl)
+    .then((r) => r.json())
+    .then((data) => {
+      for (const line of data.lines) appendLogLine(line);
+      scrollLogToBottom();
+    });
+
+  const es = new EventSource(streamUrl);
+  es.onmessage = (ev) => {
+    let line;
+    try { line = JSON.parse(ev.data); } catch (e) { line = ev.data; }
+    appendLogLine(line);
+    if (document.getElementById('logFollow').checked) scrollLogToBottom();
+  };
+  state.es = es;
+}
+
+function appendLogLine(line) {
+  const filter = document.getElementById('logFilter').value.trim().toLowerCase();
+  if (filter && !line.toLowerCase().includes(filter)) return;
+  document.getElementById('logBody').appendChild(renderLogLine(line));
+}
+
+function scrollLogToBottom() {
+  const body = document.getElementById('logBody');
+  body.scrollTop = body.scrollHeight;
+}
+
+document.getElementById('btnCloseLog').addEventListener('click', closeLogPanel);
+document.getElementById('logBackdrop').addEventListener('click', closeLogPanel);
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && document.getElementById('logPanel').classList.contains('open')) {
+    closeLogPanel();
+  }
+});
+
+document.getElementById('btnFullscreenLog').addEventListener('click', () => {
+  document.getElementById('logPanel').classList.toggle('fullscreen');
+  scrollLogToBottom();
+});
+
+document.getElementById('logFilter').addEventListener('input', () => {
+  if (state.selected) loadLogSource();
+});
+
+// ---- global actions ----
+
+document.getElementById('btnDaemonLog').addEventListener('click', () => openLogPanel('alcazar'));
+
+document.getElementById('btnRestartAll').addEventListener('click', async () => {
+  if (!confirm('Restart every process?')) return;
+  await api('/api/restart-all', { method: 'POST' });
+  refreshProcesses();
+});
+
+document.getElementById('btnStopAll').addEventListener('click', async () => {
+  if (!confirm('Stop every process? (alcazar itself keeps running)')) return;
+  await api('/api/stop-all', { method: 'POST' });
+  refreshProcesses();
+});
+
+// ---- add service modal ----
+
+const backdrop = document.getElementById('addModalBackdrop');
+
+function addEnvRow(key = '', value = '') {
+  const row = document.createElement('div');
+  row.className = 'env-row';
+  row.innerHTML = `
+    <input type="text" placeholder="KEY" class="mono env-key" value="${escapeHtml(key)}">
+    <input type="text" placeholder="value" class="mono env-value" value="${escapeHtml(value)}">
+  `;
+  const removeBtn = button('small', '×', () => row.remove());
+  row.appendChild(removeBtn);
+  document.getElementById('envRows').appendChild(row);
+}
+
+function resetAddForm() {
+  document.getElementById('fName').value = '';
+  document.getElementById('fCwd').value = '';
+  document.getElementById('fCommand').value = '';
+  document.getElementById('formError').textContent = '';
+  document.getElementById('envRows').innerHTML = '';
+}
+
+document.getElementById('btnAddService').addEventListener('click', () => {
+  resetAddForm();
+  backdrop.classList.add('open');
+});
+document.getElementById('btnCancelAdd').addEventListener('click', () => backdrop.classList.remove('open'));
+document.getElementById('btnAddEnvRow').addEventListener('click', () => addEnvRow());
+
+document.getElementById('btnSubmitAdd').addEventListener('click', async () => {
+  const name = document.getElementById('fName').value.trim();
+  const cwd = document.getElementById('fCwd').value.trim();
+  const command = document.getElementById('fCommand').value.trim();
+  const env = {};
+  document.querySelectorAll('#envRows .env-row').forEach((row) => {
+    const k = row.querySelector('.env-key').value.trim();
+    const v = row.querySelector('.env-value').value;
+    if (k) env[k] = v;
+  });
+
+  const errorEl = document.getElementById('formError');
+  errorEl.textContent = '';
+  try {
+    await api('/api/config/processes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, cwd: cwd || null, command, env }),
+    });
+    backdrop.classList.remove('open');
+    refreshProcesses();
+  } catch (e) {
+    errorEl.textContent = e.message;
+  }
+});
+
+// ---- boot ----
+
+// `?pin=<name>` opens straight into that process's log, full-screen, with
+// nothing else on screen. Used by the menu bar app's pinned, always-on-top
+// log windows (see menubar/main.js) -- those windows only ever load this
+// URL shape, they don't reimplement log rendering themselves.
+const pinName = new URLSearchParams(location.search).get('pin');
+
+refreshProcesses().then(() => {
+  if (pinName) {
+    openLogPanel(pinName);
+    document.getElementById('logPanel').classList.add('fullscreen');
+  }
+});
+setInterval(refreshProcesses, 2000);
+</script>
+</body>
+</html>
